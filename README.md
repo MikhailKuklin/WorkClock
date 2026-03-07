@@ -11,6 +11,7 @@ A lightweight macOS menubar app that tracks your daily work hours. No accounts, 
 - Displays elapsed work time in the menubar (`⏱ 04:23:15`)
 - **Pauses automatically** when you lock the screen or Mac goes to sleep
 - **Resumes automatically** when you unlock or wake up
+- **Manual pause/resume** — pause the timer for personal breaks (icon changes to `⏸`)
 - **Persists across logout/login** and app restarts
 - **Resets automatically** each new day
 - **Keeps daily history** — view the last 14 days from the menubar
@@ -60,7 +61,8 @@ launchctl load ~/Library/LaunchAgents/com.workclock.plist
 ## Usage
 
 - The timer starts when the app launches and counts your active (unlocked) time
-- **Right-click** the menubar icon for options:
+- **Click** the menubar icon for options:
+  - **Pause/Resume** — manually pause for breaks; screen unlock won't auto-resume while paused
   - **History** — view daily totals for the last 14 days
   - **Reset** — reset today's timer to zero
   - **Quit** — stop the app
