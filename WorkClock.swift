@@ -8,6 +8,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var accumulated: TimeInterval = 0
     var lastTick: Date = Date()
     var paused = false
+    var manuallyPaused = false
+    var pauseMenuItem: NSMenuItem!
     let dateFmt: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
@@ -38,6 +40,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let menu = NSMenu()
         menu.delegate = self
+        pauseMenuItem = NSMenuItem(title: "Pause", action: #selector(togglePause), keyEquivalent: "p")
+        menu.addItem(pauseMenuItem)
+        menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "History", action: nil, keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Reset", action: #selector(resetTimer), keyEquivalent: "r"))
@@ -88,11 +93,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func screenUnlocked() {
-        resume()
+        if !manuallyPaused { resume() }
     }
 
     @objc func didWake() {
-        resume()
+        if !manuallyPaused { resume() }
+    }
+
+    @objc func togglePause() {
+        if manuallyPaused {
+            manuallyPaused = false
+            resume()
+        } else {
+            manuallyPaused = true
+            pause()
+        }
     }
 
     func pause() {
@@ -116,7 +131,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let hours = elapsed / 3600
         let minutes = (elapsed % 3600) / 60
         let seconds = elapsed % 60
-        let text = String(format: "⏱ %02d:%02d:%02d", hours, minutes, seconds)
+        let icon = manuallyPaused ? "⏸" : "⏱"
+        let text = String(format: "%@ %02d:%02d:%02d", icon, hours, minutes, seconds)
 
         let color: NSColor
         if hours >= 10 {
@@ -131,6 +147,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             string: text,
             attributes: [.foregroundColor: color]
         )
+        pauseMenuItem?.title = manuallyPaused ? "Resume" : "Pause"
     }
 
     func appendHistory(date: Date, seconds: Double) {
@@ -157,6 +174,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         accumulated = 0
         lastTick = Date()
         paused = false
+        manuallyPaused = false
         saveState()
         updateDisplay()
     }
