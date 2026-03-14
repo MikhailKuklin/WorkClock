@@ -173,6 +173,89 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return content.split(separator: "\n").map(String.init).suffix(14).reversed()
     }
 
+    func loadHistoryEntries() -> [(date: String, time: String)] {
+        guard let content = try? String(contentsOfFile: historyFile, encoding: .utf8) else { return [] }
+        return content.split(separator: "\n").compactMap { line in
+            let parts = line.split(separator: " ", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
+            guard parts.count == 2 else { return nil }
+            return (date: parts[0], time: parts[1])
+        }
+    }
+
+    func updateHistoryEntry(dateStr: String, newSeconds: Int) {
+        var entries = loadHistoryEntries()
+        if let idx = entries.firstIndex(where: { $0.date == dateStr }) {
+            let h = newSeconds / 3600
+            let m = (newSeconds % 3600) / 60
+            let s = newSeconds % 60
+            entries[idx] = (date: dateStr, time: String(format: "%02d:%02d:%02d", h, m, s))
+        }
+        let content = entries.map { "\($0.date)  \($0.time)\n" }.joined()
+        try? content.write(toFile: historyFile, atomically: true, encoding: .utf8)
+    }
+
+    func addHistoryEntry(dateStr: String, seconds: Int) {
+        var entries = loadHistoryEntries()
+        let h = seconds / 3600
+        let m = (seconds % 3600) / 60
+        let s = seconds % 60
+        let timeStr = String(format: "%02d:%02d:%02d", h, m, s)
+        // Insert in sorted position
+        if let idx = entries.firstIndex(where: { $0.date > dateStr }) {
+            entries.insert((date: dateStr, time: timeStr), at: idx)
+        } else {
+            entries.append((date: dateStr, time: timeStr))
+        }
+        let content = entries.map { "\($0.date)  \($0.time)\n" }.joined()
+        try? content.write(toFile: historyFile, atomically: true, encoding: .utf8)
+    }
+
+    @objc func adjustHistoryEntry(_ sender: NSMenuItem) {
+        guard let dateStr = sender.representedObject as? String else { return }
+
+        let entries = loadHistoryEntries()
+        let existing = entries.first(where: { $0.date == dateStr })
+        let timeParts = existing?.time.split(separator: ":").compactMap { Int($0) } ?? [0, 0, 0]
+        let currentH = timeParts.count >= 1 ? timeParts[0] : 0
+        let currentM = timeParts.count >= 2 ? timeParts[1] : 0
+
+        let alert = NSAlert()
+        alert.messageText = "Adjust Time for \(dateStr)"
+        alert.informativeText = "Current: \(String(format: "%02d:%02d", currentH, currentM))\nEnter new time as HH:MM (e.g. 07:30):"
+        alert.addButton(withTitle: "Set")
+        alert.addButton(withTitle: "Cancel")
+        alert.alertStyle = .informational
+
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 120, height: 24))
+        input.stringValue = String(format: "%02d:%02d", currentH, currentM)
+        input.alignment = .center
+        alert.accessoryView = input
+        alert.window.initialFirstResponder = input
+
+        NSApp.activate(ignoringOtherApps: true)
+        let response = alert.runModal()
+        guard response == .alertFirstButtonReturn else { return }
+
+        let text = input.stringValue.trimmingCharacters(in: .whitespaces)
+        let parts = text.split(separator: ":")
+        guard parts.count == 2,
+              let h = Int(parts[0]), h >= 0,
+              let m = Int(parts[1]), m >= 0, m < 60 else {
+            let err = NSAlert()
+            err.messageText = "Invalid format"
+            err.informativeText = "Please use HH:MM (e.g. 07:30)"
+            err.runModal()
+            return
+        }
+
+        let newSeconds = h * 3600 + m * 60
+        if existing != nil {
+            updateHistoryEntry(dateStr: dateStr, newSeconds: newSeconds)
+        } else {
+            addHistoryEntry(dateStr: dateStr, seconds: newSeconds)
+        }
+    }
+
     @objc func adjustTime() {
         let wasPaused = paused
         if !wasPaused {
@@ -219,6 +302,62 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         updateDisplay()
     }
 
+    @objc func addPastDay() {
+        let alert = NSAlert()
+        alert.messageText = "Add Past Day"
+        alert.informativeText = "Enter date and time as YYYY-MM-DD HH:MM\n(e.g. 2026-03-10 08:15):"
+        alert.addButton(withTitle: "Add")
+        alert.addButton(withTitle: "Cancel")
+        alert.alertStyle = .informational
+
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 200, height: 24))
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date())!
+        input.stringValue = "\(dateFmt.string(from: yesterday)) 07:30"
+        input.alignment = .center
+        alert.accessoryView = input
+        alert.window.initialFirstResponder = input
+
+        NSApp.activate(ignoringOtherApps: true)
+        let response = alert.runModal()
+        guard response == .alertFirstButtonReturn else { return }
+
+        let text = input.stringValue.trimmingCharacters(in: .whitespaces)
+        let textParts = text.split(separator: " ")
+        guard textParts.count == 2 else {
+            showFormatError("Please use YYYY-MM-DD HH:MM (e.g. 2026-03-10 08:15)")
+            return
+        }
+        let dateStr = String(textParts[0])
+        guard dateFmt.date(from: dateStr) != nil else {
+            showFormatError("Invalid date. Please use YYYY-MM-DD format.")
+            return
+        }
+        // Don't allow adding for today
+        if dateStr == dateFmt.string(from: Date()) {
+            showFormatError("Use 'Adjust Time…' to change today's time.")
+            return
+        }
+        let timeParts = textParts[1].split(separator: ":").compactMap { Int($0) }
+        guard timeParts.count == 2, timeParts[0] >= 0, timeParts[1] >= 0, timeParts[1] < 60 else {
+            showFormatError("Invalid time. Please use HH:MM format.")
+            return
+        }
+        // Check if entry already exists
+        let entries = loadHistoryEntries()
+        if entries.contains(where: { $0.date == dateStr }) {
+            updateHistoryEntry(dateStr: dateStr, newSeconds: timeParts[0] * 3600 + timeParts[1] * 60)
+        } else {
+            addHistoryEntry(dateStr: dateStr, seconds: timeParts[0] * 3600 + timeParts[1] * 60)
+        }
+    }
+
+    func showFormatError(_ message: String) {
+        let err = NSAlert()
+        err.messageText = "Invalid format"
+        err.informativeText = message
+        err.runModal()
+    }
+
     @objc func resetTimer() {
         accumulated = 0
         lastTick = Date()
@@ -245,14 +384,19 @@ extension AppDelegate: NSMenuDelegate {
         // History submenu
         if let historyItem = menu.items.first(where: { $0.title == "History" }) {
             let sub = NSMenu()
-            let history = loadHistory()
-            if history.isEmpty {
+            let entries = loadHistoryEntries().suffix(14).reversed()
+            if entries.isEmpty {
                 sub.addItem(NSMenuItem(title: "No history yet", action: nil, keyEquivalent: ""))
             } else {
-                for entry in history {
-                    sub.addItem(NSMenuItem(title: entry, action: nil, keyEquivalent: ""))
+                for entry in entries {
+                    let item = NSMenuItem(title: "\(entry.date)  \(entry.time)", action: #selector(adjustHistoryEntry(_:)), keyEquivalent: "")
+                    item.representedObject = entry.date
+                    item.toolTip = "Click to adjust"
+                    sub.addItem(item)
                 }
             }
+            sub.addItem(NSMenuItem.separator())
+            sub.addItem(NSMenuItem(title: "Add Past Day…", action: #selector(addPastDay), keyEquivalent: ""))
             historyItem.submenu = sub
         }
 
