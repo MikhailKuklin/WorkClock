@@ -7,6 +7,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     let historyFile = NSString(string: "~/.workclock_history").expandingTildeInPath
     var accumulated: TimeInterval = 0
     var lastTick: Date = Date()
+    var currentDay: Date = Calendar.current.startOfDay(for: Date())
     var paused = false
     var manuallyPaused = false
     var pauseMenuItem: NSMenuItem!
@@ -26,6 +27,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             guard let self = self, !self.paused else { return }
             let now = Date()
+            let today = Calendar.current.startOfDay(for: now)
+            if today != self.currentDay {
+                // Day changed — archive yesterday and reset
+                self.accumulated += now.timeIntervalSince(self.lastTick)
+                if self.accumulated > 0 {
+                    self.appendHistory(date: self.currentDay, seconds: self.accumulated)
+                }
+                self.accumulated = 0
+                self.currentDay = today
+                self.lastTick = now
+                self.saveState()
+                self.updateDisplay()
+                return
+            }
             self.accumulated += now.timeIntervalSince(self.lastTick)
             self.lastTick = now
             self.updateDisplay()
@@ -80,6 +95,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         accumulated = saved
+        currentDay = Calendar.current.startOfDay(for: Date())
     }
 
     func saveState() {
@@ -116,7 +132,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func pause() {
         guard !paused else { return }
         let now = Date()
-        accumulated += now.timeIntervalSince(lastTick)
+        let todayStart = Calendar.current.startOfDay(for: now)
+
+        if lastTick < todayStart {
+            // lastTick was yesterday — split time at midnight
+            let secondsBeforeMidnight = todayStart.timeIntervalSince(lastTick)
+            let previousDayTotal = accumulated + secondsBeforeMidnight
+            if previousDayTotal > 0 {
+                appendHistory(date: lastTick, seconds: previousDayTotal)
+            }
+            accumulated = now.timeIntervalSince(todayStart)
+            currentDay = todayStart
+        } else {
+            accumulated += now.timeIntervalSince(lastTick)
+        }
+
         paused = true
         saveState()
         updateDisplay()
@@ -230,7 +260,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         if !paused {
-            accumulated += Date().timeIntervalSince(lastTick)
+            let now = Date()
+            let todayStart = Calendar.current.startOfDay(for: now)
+            if lastTick < todayStart {
+                let secondsBeforeMidnight = todayStart.timeIntervalSince(lastTick)
+                let previousDayTotal = accumulated + secondsBeforeMidnight
+                if previousDayTotal > 0 {
+                    appendHistory(date: lastTick, seconds: previousDayTotal)
+                }
+                accumulated = now.timeIntervalSince(todayStart)
+                currentDay = todayStart
+            } else {
+                accumulated += now.timeIntervalSince(lastTick)
+            }
         }
         saveState()
     }
