@@ -184,18 +184,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func appendHistory(date: Date, seconds: Double) {
+        let dateStr = dateFmt.string(from: date)
         let elapsed = Int(seconds)
         let h = elapsed / 3600
         let m = (elapsed % 3600) / 60
         let s = elapsed % 60
-        let line = String(format: "%@  %02d:%02d:%02d\n", dateFmt.string(from: date), h, m, s)
-        if let handle = FileHandle(forWritingAtPath: historyFile) {
-            handle.seekToEndOfFile()
-            handle.write(line.data(using: .utf8)!)
-            handle.closeFile()
-        } else {
-            try? line.write(toFile: historyFile, atomically: true, encoding: .utf8)
+        let newTime = String(format: "%02d:%02d:%02d", h, m, s)
+
+        // Read existing entries
+        var lines: [String] = []
+        if let content = try? String(contentsOfFile: historyFile, encoding: .utf8) {
+            lines = content.split(separator: "\n").map(String.init)
         }
+
+        // Check if date already exists — keep the larger value
+        if let idx = lines.firstIndex(where: { $0.hasPrefix(dateStr) }) {
+            let parts = lines[idx].split(separator: " ", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
+            if parts.count == 2 {
+                let tp = parts[1].split(separator: ":").compactMap { Int($0) }
+                let existingSecs = (tp.count == 3) ? tp[0] * 3600 + tp[1] * 60 + tp[2] : 0
+                if elapsed <= existingSecs { return }
+            }
+            lines[idx] = "\(dateStr)  \(newTime)"
+        } else {
+            lines.append("\(dateStr)  \(newTime)")
+        }
+
+        let content = lines.map { $0 + "\n" }.joined()
+        try? content.write(toFile: historyFile, atomically: true, encoding: .utf8)
     }
 
     func loadHistory() -> [String] {
@@ -504,16 +520,17 @@ extension AppDelegate: NSMenuDelegate {
 
                 if isWeekend {
                     extraSeconds += entry.seconds
-                } else if entry.seconds > workdayThreshold {
+                } else {
                     extraSeconds += entry.seconds - workdayThreshold
                 }
             }
 
-            let extraH = Int(extraSeconds) / 3600
-            let extraM = (Int(extraSeconds) % 3600) / 60
+            let absExtra = abs(Int(extraSeconds))
+            let extraH = absExtra / 3600
+            let extraM = (absExtra % 3600) / 60
             let totalH = Int(totalSeconds) / 3600
             let totalM = (Int(totalSeconds) % 3600) / 60
-            let sign = extraSeconds > 0 ? "+" : ""
+            let sign = extraSeconds >= 0 ? "+" : "-"
 
             let header = NSMenuItem(title: "\(startStr) → \(endStr)", action: nil, keyEquivalent: "")
             header.attributedTitle = NSAttributedString(
@@ -523,13 +540,13 @@ extension AppDelegate: NSMenuDelegate {
             sub.addItem(header)
             sub.addItem(NSMenuItem(title: "  Total: \(String(format: "%02d:%02d", totalH, totalM))  (\(dayCount) days)", action: nil, keyEquivalent: ""))
 
-            let extraItem = NSMenuItem(title: "  Extra: \(sign)\(String(format: "%02d:%02d", extraH, extraM))", action: nil, keyEquivalent: "")
-            if extraSeconds > 0 {
-                extraItem.attributedTitle = NSAttributedString(
-                    string: "  Extra: \(sign)\(String(format: "%02d:%02d", extraH, extraM))",
-                    attributes: [.foregroundColor: NSColor.systemGreen]
-                )
-            }
+            let extraStr = "  Balance: \(sign)\(String(format: "%02d:%02d", extraH, extraM))"
+            let extraItem = NSMenuItem(title: extraStr, action: nil, keyEquivalent: "")
+            let extraColor: NSColor = extraSeconds >= 0 ? .systemGreen : .systemRed
+            extraItem.attributedTitle = NSAttributedString(
+                string: extraStr,
+                attributes: [.foregroundColor: extraColor]
+            )
             sub.addItem(extraItem)
             sub.addItem(NSMenuItem.separator())
         }
