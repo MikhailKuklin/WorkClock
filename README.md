@@ -65,8 +65,8 @@ launchctl load ~/Library/LaunchAgents/com.workclock.plist
 - The timer starts when the app launches and counts your active (unlocked) time
 - **Click** the menubar icon for options:
   - **Pause/Resume** — manually pause for breaks; screen unlock won't auto-resume while paused
-  - **Adjust Time…** — set the tracked time to any value (HH:MM format). Useful when you forgot to pause for a break or started the app late
-  - **History** — view daily totals for the last 14 days
+  - **Adjust Time…** — set today's tracked time to any value (HH:MM format). Useful when you forgot to pause for a break or started the app late
+  - **History** — view daily totals for the last 14 days. **Click any entry** to adjust its time. Use **Add Past Day…** to add a missing day
   - **Weekly Stats** — view extra hours per week (last 8 weeks). Extra hours = time worked beyond 7.5h on weekdays + all time on weekends. Shown in green when positive
   - **Reset** — reset today's timer to zero
   - **Quit** — stop the app
