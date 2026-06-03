@@ -62,6 +62,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "History", action: nil, keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Weekly Stats", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Global Stats", action: nil, keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Reset", action: #selector(resetTimer), keyEquivalent: "r"))
         menu.addItem(NSMenuItem.separator())
@@ -462,13 +463,17 @@ extension AppDelegate: NSMenuDelegate {
         if let statsItem = menu.items.first(where: { $0.title == "Weekly Stats" }) {
             statsItem.submenu = buildWeeklyStatsMenu()
         }
+
+        // Global stats submenu
+        if let globalItem = menu.items.first(where: { $0.title == "Global Stats" }) {
+            globalItem.submenu = buildGlobalStatsMenu()
+        }
     }
 
-    private func buildWeeklyStatsMenu() -> NSMenu {
-        let sub = NSMenu()
-        let cal = Calendar.current
+    private var workdayThreshold: Double { 7.5 * 3600 } // 7h 30m
 
-        // Gather all history entries + today
+    // Gather all history entries + today's running total.
+    private func gatherDayData() -> [(date: Date, seconds: Double)] {
         var dayData: [(date: Date, seconds: Double)] = []
         if let content = try? String(contentsOfFile: historyFile, encoding: .utf8) {
             for line in content.split(separator: "\n") {
@@ -484,6 +489,75 @@ extension AppDelegate: NSMenuDelegate {
         // Add today
         let todaySecs = paused ? accumulated : accumulated + Date().timeIntervalSince(lastTick)
         dayData.append((date: Date(), seconds: todaySecs))
+        return dayData
+    }
+
+    // Cumulative balance vs the workday threshold (weekends count fully as extra).
+    private func balanceSeconds(for entries: [(date: Date, seconds: Double)]) -> Double {
+        let cal = Calendar.current
+        var extraSeconds: Double = 0
+        for entry in entries {
+            let weekday = cal.component(.weekday, from: entry.date) // 1=Sun, 7=Sat
+            let isWeekend = weekday == 1 || weekday == 7
+            extraSeconds += isWeekend ? entry.seconds : entry.seconds - workdayThreshold
+        }
+        return extraSeconds
+    }
+
+    private func buildGlobalStatsMenu() -> NSMenu {
+        let sub = NSMenu()
+        let dayData = gatherDayData()
+
+        if dayData.isEmpty {
+            sub.addItem(NSMenuItem(title: "No data yet", action: nil, keyEquivalent: ""))
+            return sub
+        }
+
+        let dayCount = dayData.count
+        let totalSeconds = dayData.reduce(0.0) { $0 + $1.seconds }
+        let extraSeconds = balanceSeconds(for: dayData)
+        let avgSeconds = totalSeconds / Double(dayCount)
+
+        let sortedDates = dayData.map { $0.date }.sorted()
+        let firstStr = dateFmt.string(from: sortedDates.first!)
+        let lastStr = dateFmt.string(from: sortedDates.last!)
+
+        let header = NSMenuItem(title: "All Time", action: nil, keyEquivalent: "")
+        header.attributedTitle = NSAttributedString(
+            string: "\(firstStr) → \(lastStr)",
+            attributes: [.font: NSFont.boldSystemFont(ofSize: 13)]
+        )
+        sub.addItem(header)
+
+        let totalH = Int(totalSeconds) / 3600
+        let totalM = (Int(totalSeconds) % 3600) / 60
+        sub.addItem(NSMenuItem(title: "  Total: \(String(format: "%d:%02d", totalH, totalM))  (\(dayCount) days)", action: nil, keyEquivalent: ""))
+
+        let avgH = Int(avgSeconds) / 3600
+        let avgM = (Int(avgSeconds) % 3600) / 60
+        sub.addItem(NSMenuItem(title: "  Avg/day: \(String(format: "%02d:%02d", avgH, avgM))", action: nil, keyEquivalent: ""))
+
+        let absExtra = abs(Int(extraSeconds))
+        let extraH = absExtra / 3600
+        let extraM = (absExtra % 3600) / 60
+        let sign = extraSeconds >= 0 ? "+" : "-"
+        let extraStr = "  Balance: \(sign)\(String(format: "%d:%02d", extraH, extraM))"
+        let extraItem = NSMenuItem(title: extraStr, action: nil, keyEquivalent: "")
+        extraItem.attributedTitle = NSAttributedString(
+            string: extraStr,
+            attributes: [.foregroundColor: extraSeconds >= 0 ? NSColor.systemGreen : NSColor.systemRed]
+        )
+        sub.addItem(extraItem)
+
+        return sub
+    }
+
+    private func buildWeeklyStatsMenu() -> NSMenu {
+        let sub = NSMenu()
+        let cal = Calendar.current
+
+        // Gather all history entries + today
+        let dayData = gatherDayData()
 
         // Group by ISO week (Mon–Sun)
         var weeks: [String: [(date: Date, seconds: Double)]] = [:]
@@ -494,7 +568,6 @@ extension AppDelegate: NSMenuDelegate {
         }
 
         let sortedKeys = weeks.keys.sorted().reversed()
-        let workdayThreshold: Double = 7.5 * 3600 // 7h 30m
 
         if weeks.isEmpty {
             sub.addItem(NSMenuItem(title: "No data yet", action: nil, keyEquivalent: ""))
