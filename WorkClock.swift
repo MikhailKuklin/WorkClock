@@ -472,6 +472,23 @@ extension AppDelegate: NSMenuDelegate {
 
     private var workdayThreshold: Double { 7.5 * 3600 } // 7h 30m
 
+    // High-contrast balance colors that adapt to the menu appearance:
+    // vivid on dark/vibrant menus, deep and saturated on light menus.
+    private func balanceColor(positive: Bool) -> NSColor {
+        NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            if positive {
+                return isDark
+                    ? NSColor(srgbRed: 0.32, green: 0.92, blue: 0.46, alpha: 1) // bright green
+                    : NSColor(srgbRed: 0.00, green: 0.60, blue: 0.24, alpha: 1) // deep green
+            } else {
+                return isDark
+                    ? NSColor(srgbRed: 1.00, green: 0.45, blue: 0.42, alpha: 1) // coral red
+                    : NSColor(srgbRed: 0.82, green: 0.06, blue: 0.10, alpha: 1) // deep red
+            }
+        }
+    }
+
     // Gather all history entries + today's running total.
     private func gatherDayData() -> [(date: Date, seconds: Double)] {
         var dayData: [(date: Date, seconds: Double)] = []
@@ -535,7 +552,10 @@ extension AppDelegate: NSMenuDelegate {
         let extraItem = NSMenuItem(title: extraStr, action: nil, keyEquivalent: "")
         extraItem.attributedTitle = NSAttributedString(
             string: extraStr,
-            attributes: [.foregroundColor: extraSeconds >= 0 ? NSColor.systemGreen : NSColor.systemRed]
+            attributes: [
+                .foregroundColor: balanceColor(positive: extraSeconds >= 0),
+                .font: NSFont.boldSystemFont(ofSize: 13)
+            ]
         )
         sub.addItem(extraItem)
 
@@ -605,10 +625,12 @@ extension AppDelegate: NSMenuDelegate {
 
             let extraStr = "  Balance: \(sign)\(String(format: "%02d:%02d", extraH, extraM))"
             let extraItem = NSMenuItem(title: extraStr, action: nil, keyEquivalent: "")
-            let extraColor: NSColor = extraSeconds >= 0 ? .systemGreen : .systemRed
             extraItem.attributedTitle = NSAttributedString(
                 string: extraStr,
-                attributes: [.foregroundColor: extraColor]
+                attributes: [
+                    .foregroundColor: balanceColor(positive: extraSeconds >= 0),
+                    .font: NSFont.boldSystemFont(ofSize: 13)
+                ]
             )
             sub.addItem(extraItem)
             sub.addItem(NSMenuItem.separator())
