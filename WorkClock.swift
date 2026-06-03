@@ -513,29 +513,19 @@ extension AppDelegate: NSMenuDelegate {
             return sub
         }
 
-        let dayCount = dayData.count
         let totalSeconds = dayData.reduce(0.0) { $0 + $1.seconds }
         let extraSeconds = balanceSeconds(for: dayData)
-        let avgSeconds = totalSeconds / Double(dayCount)
-
-        let sortedDates = dayData.map { $0.date }.sorted()
-        let firstStr = dateFmt.string(from: sortedDates.first!)
-        let lastStr = dateFmt.string(from: sortedDates.last!)
 
         let header = NSMenuItem(title: "All Time", action: nil, keyEquivalent: "")
         header.attributedTitle = NSAttributedString(
-            string: "\(firstStr) → \(lastStr)",
+            string: "All Time",
             attributes: [.font: NSFont.boldSystemFont(ofSize: 13)]
         )
         sub.addItem(header)
 
         let totalH = Int(totalSeconds) / 3600
         let totalM = (Int(totalSeconds) % 3600) / 60
-        sub.addItem(NSMenuItem(title: "  Total: \(String(format: "%d:%02d", totalH, totalM))  (\(dayCount) days)", action: nil, keyEquivalent: ""))
-
-        let avgH = Int(avgSeconds) / 3600
-        let avgM = (Int(avgSeconds) % 3600) / 60
-        sub.addItem(NSMenuItem(title: "  Avg/day: \(String(format: "%02d:%02d", avgH, avgM))", action: nil, keyEquivalent: ""))
+        sub.addItem(NSMenuItem(title: "  Total: \(String(format: "%d:%02d", totalH, totalM))", action: nil, keyEquivalent: ""))
 
         let absExtra = abs(Int(extraSeconds))
         let extraH = absExtra / 3600
