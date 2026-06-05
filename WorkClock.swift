@@ -72,6 +72,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func loadState() {
         let today = Calendar.current.startOfDay(for: Date())
+        // Always track the current day. The timer's midnight rollover archives
+        // under `currentDay`, so leaving it stale here (e.g. on the cross-day
+        // wake path below) makes a later rollover stamp time under the wrong
+        // date — which the appendHistory dedup can then silently drop.
+        currentDay = today
         guard FileManager.default.fileExists(atPath: stateFile),
               let content = try? String(contentsOfFile: stateFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines) else {
             accumulated = 0
@@ -96,7 +101,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         accumulated = saved
-        currentDay = Calendar.current.startOfDay(for: Date())
     }
 
     func saveState() {
